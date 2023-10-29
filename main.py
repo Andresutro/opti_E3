@@ -4,17 +4,18 @@ import pandas as pd
 from os import path
 from crear_parametros import *
 model = Model()
-model.setParam("TimeLimit", 1800)  # Establece el tiempo m´aximo en segundos
+model.setParam("TimeLimit", 30)  # Establece el tiempo m´aximo en segundos
 
 # SETS
 # Conjuntos
-T = 14  # Horizonte de decisión: 2 semanas
-H = 12  # Horas laborales por día
-D = 100 # Total de drones
-C = 10 # Total de cargadores para drones 
-F = 50 # Total de ubicaciones que solicitan entrega por dron 
-Q = 5000 # Total de productos a entregar 
+T = range(1, 14)  # Horizonte de decisión: 2 semanas
+H = range(1, 12)  # Horas laborales por día
+D = range(1, 100) # Total de drones
+C = range(1, 10) # Total de cargadores para drones 
+F = range(1, 50) # Total de ubicaciones que solicitan entrega por dron 
+Q = range(1, 500) # Total de productos a entregar 
 
+cb = 10
 cqt = c_qt()
 ca_qt = ca_qt()
 u_qt = u_qt()
@@ -23,7 +24,6 @@ ed_h = ed_h()
 me_h = me_h()
 cv = CV()
 v = V()
-s_q =  
 
 #---------------------------------------- Variables ----------------------------------------#
 
@@ -49,12 +49,12 @@ model.update()
 # Restricción 1
 model.addConstrs((quicksum(XE_dqhft[d,q,h,f,t] for t in T for f in F for d in D for h in H)for q in Q), name = "R1")
 
-# Restricción 2
+# Restricción 2 (Valor S_q aleatorio)
 model.addConstrs((I_qt[q,t] == I_qt[q, t-1] + E_qt[q, t] - quicksum(XE_dqhft[d,q,h,f,t] for d in D for f in F for h in H) for q in Q for t in T), name = "R2")
-model.addConstrs((I_qt[q, 1] == S_q[q] for q in Q), name = "R2.2")
+model.addConstrs((I_qt[q, 1] == 200 for q in Q), name = "R2.2")
 
 # Restricción 3
-model.addConstrs((me_h[h] <= quicksum(DC_dcht[d,c,h,t]*ed_h for d in D for c in C) for h in H for t in T), name = "R3")
+model.addConstrs((me_h[h] <= quicksum(DC_dcht[d,c,h,t]*ed_h[h] for d in D for c in C) for h in H for t in T), name = "R3")
 
 # Restricción 4
 model.addConstrs((quicksum(DC_dcht[d,c,h,t] for d in D for c in C) <= C for h in H for t in T), name = "R4")
@@ -88,13 +88,13 @@ model.addConstrs((quicksum(DC_dcht[d,c,h,t] for c in C) <= 100 - PB_dht[d,h,t] f
 model.addConstrs((quicksum(DC_dcht[d,c,h,t] for c in C) <= 1 for d in D for h in H for t in T), name = "R14")
 
 # Restricción 15
-model.addConstrs((quicksum(XE_dqhft[d,q,h,f,t] for h in H for d in D for f in F) >= U_qt for q in Q for t in T), name = "R15")
+model.addConstrs((quicksum(XE_dqhft[d,q,h,f,t] for h in H for d in D for f in F) >= u_qt[q, t] for q in Q for t in T), name = "R15")
 
 # Restricción 16
 model.addConstrs((quicksum(I_qt[q,t] for q in Q) <= V for t in T), name = "R16")
 
 # Restricción 17
-model.addConstrs((I_qt >= U_qt for q in Q for t in T), name = "R17")
+model.addConstrs((I_qt >= u_qt[q, t] for q in Q for t in T), name = "R17")
 
 # Restricción 18
 model.addConstrs((quicksum(DC_dcht[d,c,h,t] for c in C) >= 1 - (10**3)*PB_dht[d,h,t] for d in D for h in H for t in T), name = "R18")
@@ -109,3 +109,9 @@ model.addConstrs((quicksum(XE_dqhft[d,q,h,f,t] for h in H for d in D for f in F)
 model.addConstrs((quicksum(XE_dqhft[d,q,h,f,t] for q in Q for f in F for d in D) + quicksum(DC_dcht[d,c,h,t] for c in C for d in D) <= D for h in H for t in T), name = "R21")
 
 model.update()
+
+# ------------------------- Funcion Objetivo ---------------------------
+
+funcion_objetivo = quicksum(cb*T + quicksum(quicksum(cc_h[h] for h in H)*quicksum(DC_dcht[d,c,h,t] for d in D for c in C) + quicksum(I_qt*c_qt[q, t] + E_qt*ca_qt[q, t] for q in Q)) for t in T for h in H)
+model.setObjective(funcion_objetivo, GRB.MINIMIZE)
+model.optimize()
